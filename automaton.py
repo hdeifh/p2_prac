@@ -4,7 +4,7 @@
 """
 
 from collections import deque
-from graphviz import Digraph
+# from graphviz import Digraph
 from utils import is_deterministic
 
 """
@@ -12,20 +12,39 @@ from utils import is_deterministic
 """
 
 class FiniteAutomaton:
-
-    def __init__(self, initial_state, states, symbols, transitions, final_states: list):
+    def __init__(self, initial_state, states, symbols, transitions, final_states):
         self.initial_state = initial_state
         self.states = states
         self.symbols = symbols
         self.transitions = transitions
         self.final_states = final_states
         
-    def add_transition(start_state, symbol, end_state):
+    def add_transition(self, start_state, symbol, end_state):
+        if start_state not in self.transitions:
+            self.transitions[start_state] = {}
         self.transitions[start_state][symbol] = end_state
 
     def accepts(self, cadena):
-        self.final_states.append(cadena)
+        state = self.initial_state
+        for symbol in cadena:
+            while True:
+                # If the current symbol is valid from this state, consume it
+                if state in self.transitions and symbol in self.transitions[state]:
+                    state = self.transitions[state][symbol]
+                    break  # go to next input symbol
+                # If input is None, then assume that None represents universal transitions
+                elif state in self.transitions and None in self.transitions[state]:
+                    state = self.transitions[state][None]
+                    continue  # retry with same symbol in new state
+                else:
+                    return False
 
+        # After consuming all symbols, double-check that there are any universal transitions left
+        while state in self.transitions and None in self.transitions[state]:
+            state = self.transitions[state][None]
+
+        return state in self.final_states
+    
     def to_deterministic(self):
         pass
 
