@@ -32,14 +32,14 @@ class FiniteAutomaton:
                 if state in self.transitions and symbol in self.transitions[state]:
                     state = self.transitions[state][symbol]
                     break  # go to next input symbol
-                # If input is None, then assume that None represents universal transitions
+                # If input is None, then assume that None represents null transitions
                 elif state in self.transitions and None in self.transitions[state]:
                     state = self.transitions[state][None]
                     continue  # retry with same symbol in new state
                 else:
                     return False
 
-        # After consuming all symbols, double-check that there are any universal transitions left
+        # After consuming all symbols, double-check that there are any null transitions left
         while state in self.transitions and None in self.transitions[state]:
             state = self.transitions[state][None]
 
