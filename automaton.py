@@ -4,8 +4,8 @@
 """
 
 from collections import deque
-# from graphviz import Digraph
-from utils import is_deterministic
+from graphviz import Digraph
+# from utils import is_deterministic
 
 """
     Podéis implementar cualquier función auxiliar que consideréis necesaria
@@ -14,66 +14,72 @@ from utils import is_deterministic
 class FiniteAutomaton:
     def __init__(self, initial_state, states, symbols, transitions, final_states):
         """
-        Constructor for a finite automaton.
+        Constructor for a finite automaton (NFA-compatible).
 
         args:
-        initial_state: The automaton's starting state
-        states: a set of all states
-        symbols: alphabet of symbols
-        transitions: dictionary of transitions
-        final_states: a set of states that can be accepted
+            initial_state: The automaton's starting state
+            states: a set of all states
+            symbols: alphabet of symbols
+            transitions: dictionary of transitions {state: {symbol: [dest_states]}}
+            final_states: a set of states that can be accepted
         """
         self.initial_state = initial_state
         self.states = states
         self.symbols = symbols
-        self.transitions = transitions
+        # Ensure transitions store lists of destination states
+        self.transitions = {}
+        for s, sym_dict in transitions.items():
+            self.transitions[s] = {}
+            for sym, dest in sym_dict.items():
+                if isinstance(dest, list):
+                    self.transitions[s][sym] = dest
+                else:
+                    self.transitions[s][sym] = [dest]
         self.final_states = final_states
-        
+
     def add_transition(self, start_state, symbol, end_state):
         """
-        Adds a transition to the automaton
-
-
-        args:
-        start_state: The initial state of the transition
-        symbol: symbol that triggers the transition
-        final_states: The destination state of the transition
+        Adds a transition to the automaton (supports multiple destinations)
         """
         if start_state not in self.transitions:
             self.transitions[start_state] = {}
-        self.transitions[start_state][symbol] = end_state
+        if symbol not in self.transitions[start_state]:
+            self.transitions[start_state][symbol] = []
+        self.transitions[start_state][symbol].append(end_state)
+
+    def _lambda_closure(self, states):
+        """
+        Computes the λ-closure (or None-closure) of a set of states
+        """
+        stack = list(states)
+        closure = set(states)
+        while stack:
+            state = stack.pop()
+            for sym in ("λ", None):
+                if state in self.transitions and sym in self.transitions[state]:
+                    for next_state in self.transitions[state][sym]:
+                        if next_state not in closure:
+                            closure.add(next_state)
+                            stack.append(next_state)
+        return closure
 
     def accepts(self, cadena):
         """
-        Checks if the automaton will accept a given string
-
-
-        args:
-        cadena: input string
-
-        returns:
-            True if automaton accepts the string
-            False if it doesn't
+        Checks if the NFA accepts a given string
         """
-        state = self.initial_state
+        current_states = self._lambda_closure({self.initial_state})
+
         for symbol in cadena:
-            while True:
-                # If the current symbol is valid from this state, consume it
+            next_states = set()
+            for state in current_states:
                 if state in self.transitions and symbol in self.transitions[state]:
-                    state = self.transitions[state][symbol]
-                    break  # go to next input symbol
-                # If input is None, then assume that None represents null transitions
-                elif state in self.transitions and None in self.transitions[state]:
-                    state = self.transitions[state][None]
-                    continue  # retry with same symbol in new state
-                else:
-                    return False
+                    for dest in self.transitions[state][symbol]:
+                        next_states.update(self._lambda_closure({dest}))
+            current_states = next_states
+            if not current_states:
+                return False
 
-        # After consuming all symbols, double-check that there are any null transitions left
-        while state in self.transitions and None in self.transitions[state]:
-            state = self.transitions[state][None]
-
-        return state in self.final_states
+        return any(state in self.final_states for state in current_states)
     
     def to_deterministic(self):
         """   
@@ -118,4 +124,5 @@ class FiniteAutomaton:
                 for state_fin in self.transitions[state_ini][symbol]:
                     dot.edge(state_ini, state_fin, symbol if symbol is not None else "λ")
 
+        print('x')
         dot.render(path+filename, view=view)

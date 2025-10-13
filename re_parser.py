@@ -59,11 +59,15 @@ class REParser():
             Automaton that accepts the empty language. Type: FiniteAutomaton
 
         """
-        #---------------------------------------------------------------------
-        # TO DO: Implement this method...
-        raise NotImplementedError("This method must be implemented.")        
-        #---------------------------------------------------------------------
-        
+        # Create a single state that is not accepting and has no transitions
+        state = str(self.state_counter)
+        self.state_counter += 1
+        states = {str(state)}
+        symbols = set()
+        transitions = dict()
+        initial_state = str(state)
+        final_states = set()
+        return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
     def _create_automaton_lambda(self):
         """
@@ -73,10 +77,15 @@ class REParser():
             Automaton that accepts the empty string. Type: FiniteAutomaton
 
         """
-        #---------------------------------------------------------------------
-        # TO DO: Implement this method...
-        raise NotImplementedError("This method must be implemented.")        
-        #---------------------------------------------------------------------
+        # Create a single state that is both initial and final, with no transitions
+        state = str(self.state_counter)
+        self.state_counter += 1
+        states = {state}
+        symbols = set()
+        transitions = dict()
+        initial_state = state
+        final_states = {state}
+        return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
 
     def _create_automaton_symbol(self, symbol):
@@ -90,10 +99,15 @@ class REParser():
             Automaton that accepts a symbol. Type: FiniteAutomaton
 
         """
-        #---------------------------------------------------------------------
-        # TO DO: Implement this method...
-        raise NotImplementedError("This method must be implemented.")        
-        #---------------------------------------------------------------------
+        state1 = str(self.state_counter)
+        state2 = str(self.state_counter + 1)
+        self.state_counter += 2
+        states = {state1, state2}
+        symbols = {symbol}
+        transitions = {state1: {symbol: [state2]}}
+        initial_state = state1
+        final_states = {state2}
+        return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
 
     def _create_automaton_star(self, automaton):
@@ -105,13 +119,54 @@ class REParser():
 
         Returns:
             Automaton that accepts the Kleene star. Type: FiniteAutomaton
-
         """
-        #---------------------------------------------------------------------
-        # TO DO: Implement this method...
-        raise NotImplementedError("This method must be implemented.")  
-        #---------------------------------------------------------------------
+        new_initial = str(self.state_counter)
+        new_final = str(self.state_counter + 1)
+        self.state_counter += 2
 
+        # Copy states and symbols
+        states = set(automaton.states)
+        states.update({new_initial, new_final})
+        symbols = set(automaton.symbols)
+
+        # Deep copy transitions (flat mapping: state → symbol → single_state)
+        transitions = {
+            s: dict(t) for s, t in automaton.transitions.items()
+        }
+
+        # Helper to safely add a λ-transition
+        def add_lambda(src, dst):
+            if src not in transitions:
+                transitions[src] = {}
+            # If a λ transition already exists, turn it into a list of possible λ moves
+            if "λ" in transitions[src]:
+                # Turn it into a list or set if multiple are needed
+                existing = transitions[src]["λ"]
+                if isinstance(existing, list):
+                    existing.append(dst)
+                else:
+                    transitions[src]["λ"] = [existing, dst]
+            else:
+                transitions[src]["λ"] = [dst]
+
+        # λ-move from new initial to old initial (to start automaton)
+        add_lambda(new_initial, automaton.initial_state)
+
+        # λ-move from new initial to new final (to accept ε)
+        add_lambda(new_initial, new_final)
+
+        # λ-move from each old final to old initial (to repeat)
+        for f in automaton.final_states:
+            add_lambda(f, automaton.initial_state)
+
+        # λ-move from each old final to new final (to stop)
+        for f in automaton.final_states:
+            add_lambda(f, new_final)
+
+        initial_state = new_initial
+        final_states = {new_final}
+
+        return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
     def _create_automaton_union(self, automaton1, automaton2):
         """
@@ -122,32 +177,113 @@ class REParser():
             automaton2: Second automaton of the union. Type: FiniteAutomaton.
 
         Returns:
-            Automaton that accepts the union. Type: FiniteAutomaton.
+            Automaton that accepts the union. Type: FiniteAutomaton
 
         """
-        #---------------------------------------------------------------------
-        # TO DO: Implement this method...
-        raise NotImplementedError("This method must be implemented.")  
-        #---------------------------------------------------------------------
+        offset = max(automaton1.states | automaton2.states) + 1 if automaton1.states or automaton2.states else 0
+        # Offset automaton2 states to avoid collisions
+        def offset_states(states, offset):
+            return {s + offset for s in states}
+        def offset_transitions(transitions, offset):
+            new_trans = {}
+            for (s, sym), dests in transitions.items():
+                new_trans[(s + offset, sym)] = {d + offset for d in dests}
+            return new_trans
 
+        a1_states = set(automaton1.states)
+        a1_trans = dict(automaton1.transitions)
+        a1_init = automaton1.initial_state
+        a1_finals = set(automaton1.final_states)
+
+        a2_states = offset_states(automaton2.states, offset)
+        a2_trans = offset_transitions(automaton2.transitions, offset)
+        a2_init = automaton2.initial_state + offset
+        a2_finals = {s + offset for s in automaton2.final_states}
+
+        new_initial = str(self.state_counter)
+        new_final = str(self.state_counter + 1)
+        self.state_counter += 2
+
+        states = a1_states | a2_states | {new_initial, new_final}
+        symbols = set(automaton1.symbols) | set(automaton2.symbols)
+        transitions = {}
+        transitions.update(a1_trans)
+        transitions.update(a2_trans)
+
+        # λ-move from new initial to both automata's initials
+        transitions.setdefault((new_initial, "λ"), set()).update({a1_init, a2_init})
+        # λ-move from both automata's finals to new final
+        for f in a1_finals:
+            transitions.setdefault((f, "λ"), set()).add(new_final)
+        for f in a2_finals:
+            transitions.setdefault((f, "λ"), set()).add(new_final)
+
+        initial_state = new_initial
+        final_states = {new_final}
+        return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
     def _create_automaton_concat(self, automaton1, automaton2):
         """
-        Create an automaton that accepts the concatenation of two automata.
+        Create an automaton that accepts the concatenation of two automata (NFA-compatible).
 
         Args:
-            automaton1: First automaton of the concatenation. Type: FiniteAutomaton.
-            automaton2: Second automaton of the concatenation. Type: FiniteAutomaton.
+            automaton1: First automaton of the concatenation. Type: FiniteAutomaton
+            automaton2: Second automaton of the concatenation. Type: FiniteAutomaton
 
         Returns:
-            Automaton that accepts the concatenation. Type: FiniteAutomaton.
-
+            Automaton that accepts the concatenation. Type: FiniteAutomaton
         """
-        #---------------------------------------------------------------------
-        # TO DO: Implement this method...
-        raise NotImplementedError("This method must be implemented.")     
-        #---------------------------------------------------------------------
+        # Compute offset for renumbering automaton2 states
+        a1_state_ints = [int(s) for s in automaton1.states]
+        offset = max(a1_state_ints) + 1 if a1_state_ints else 0
 
+        def offset_state(s):
+            return str(int(s) + offset)
+
+        def offset_transitions(trans):
+            new_trans = {}
+            for s, sym_dict in trans.items():
+                new_s = offset_state(s)
+                new_trans[new_s] = {}
+                for sym, dest_list in sym_dict.items():
+                    # Ensure dest_list is always a list
+                    if not isinstance(dest_list, list):
+                        dest_list = [dest_list]
+                    new_trans[new_s][sym] = [offset_state(d) for d in dest_list]
+            return new_trans
+
+        # Copy automaton1 transitions (make sure values are lists)
+        a1_trans = {}
+        for s, sym_dict in automaton1.transitions.items():
+            a1_trans[s] = {}
+            for sym, dest in sym_dict.items():
+                if isinstance(dest, list):
+                    a1_trans[s][sym] = dest[:]
+                else:
+                    a1_trans[s][sym] = [dest]
+
+        # Offset automaton2
+        a2_trans = offset_transitions(automaton2.transitions)
+
+        # Merge states, symbols, and transitions
+        states = set(automaton1.states) | {offset_state(s) for s in automaton2.states}
+        symbols = set(automaton1.symbols) | set(automaton2.symbols)
+        transitions = {**a1_trans, **a2_trans}
+
+        # λ-move from each final of automaton1 to initial of automaton2
+        a2_init = offset_state(automaton2.initial_state)
+        for f in automaton1.final_states:
+            if f not in transitions:
+                transitions[f] = {}
+            if "λ" not in transitions[f]:
+                transitions[f]["λ"] = []
+            if a2_init not in transitions[f]["λ"]:
+                transitions[f]["λ"].append(a2_init)
+
+        initial_state = automaton1.initial_state
+        final_states = {offset_state(s) for s in automaton2.final_states}
+
+        return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
     def create_automaton(
         self,

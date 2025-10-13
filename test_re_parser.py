@@ -21,7 +21,7 @@ class TestREParser(unittest.TestCase):
         """Test fixed regex."""
         evaluator = self._create_evaluator("H.e.l.l.o")
 
-        evaluator.draw(filename="test_fixed", view=False)
+        # evaluator.draw(filename="test_fixed", view=False)
 
         self._check_accept(evaluator, "Hello", should_accept=True)
         self._check_accept(evaluator, "Helloo", should_accept=False)
@@ -33,7 +33,7 @@ class TestREParser(unittest.TestCase):
         """Test Kleene star."""
         evaluator = self._create_evaluator("a*.b*")
 
-        evaluator.draw(filename="test_star", view=False)
+        # evaluator.draw(filename="test_star", view=False)
 
         self._check_accept(evaluator, "", should_accept=True)
         self._check_accept(evaluator, "a", should_accept=True)
