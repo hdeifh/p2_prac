@@ -85,8 +85,70 @@ class FiniteAutomaton:
         """   
         Turns automaton into a deterministic DFA
         """
-        pass
 
+        symbols = set()
+        for s in self.symbols:
+            if s not in (None, 'λ'):
+                symbols.add(s)
+        
+        closure = set(self._lambda_closure({self.initial_state}))
+        
+        def name_state(states):
+            if not states:
+                return "∅"
+            "we sort to only get deterministic names"
+            return "_".join(sorted(states))
+
+        unchecked_states = [closure]
+        dfa_states = {name_state(closure)}
+        dfa_transitions = {}
+        dfa_final_states = set()
+
+        for s in closure:
+            if s in self.final_states:
+                dfa_final_states.add(name_state(closure))
+                break
+        
+        while unchecked_states:
+            current = unchecked_states.pop()
+            current_name = name_state(current)
+            if current_name not in dfa_transitions:
+                dfa_transitions[current_name] = {}
+
+            for symbol in symbols:
+                next_states = set()
+                for state in current:
+                    if state in self.transitions and symbol in self.transitions[state]:
+                        for dest in self.transitions[state][symbol]:
+                            next_states.update(self._lambda_closure({dest}))
+                next_name = name_state(next_states)
+                dfa_transitions[current_name][symbol] = [next_name]
+
+                if next_name not in dfa_states:
+                    dfa_states.add(next_name)
+                    unchecked_states.append(next_states)
+
+                    for s in next_states:
+                        if s in self.final_states:
+                            dfa_final_states.add(next_name)
+                            break
+                "revise (dead states)"
+                if "∅" in dfa_states:
+                    if "∅" not in dfa_transitions:
+                        dfa_transitions["∅"] = {}
+                    for symbol in symbols:
+                        dfa_transitions["∅"][symbol] = ["∅"]
+                    
+                return FiniteAutomaton(
+                    initial_state=name_state(closure),
+                    states=dfa_states,
+                    symbols=symbols,
+                    transitions=dfa_transitions,
+                    final_states=dfa_final_states
+                )
+
+
+    
     def to_minimized(self):
         """
         Turns automaton inta a minimized DFA
