@@ -81,7 +81,20 @@ class TestREParser(unittest.TestCase):
         self._check_accept(evaluator, ",13", should_accept=False)
         self._check_accept(evaluator, "13,", should_accept=True)
         self._check_accept(evaluator, "3,7,12", should_accept=False)
-
+        
+    """Complex regex tests for REParser."""
+    # --- Test 1: Nested stars and unions ---
+    def test_nested_star_or(self):
+        evaluator = self._create_evaluator("(a+b*.(c+d)*)*")
+        # evaluator.draw(filename="test_nested", view=False)
+        valid = ["", "a", "b", "c", "d", "bc", "bd", "bcd", "abcd",
+                 "aa", "bb", "bcdc", "ababcd"]
+        invalid = ["ef", "aeb", "xyz", "baef"]
+        for s in valid:
+            self._check_accept(evaluator, s, True)
+        for s in invalid:
+            self._check_accept(evaluator, s, False)
+        self._check_accept(evaluator, "acb", False)
 
 if __name__ == "__main__":
     unittest.main()

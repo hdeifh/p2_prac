@@ -50,6 +50,30 @@ class REParser():
     
     def __init__(self) -> None:
         self.state_counter = 0
+    
+    # Standalone helper function
+    def null_transition(self, transitions, src, dst):
+        """
+        Add a λ-transition from src to dst in the transitions dictionary.
+
+        Args:
+            transitions: dict representing automaton transitions
+            src: source state
+            dst: destination state
+        """
+        if src not in transitions:
+            transitions[src] = {}
+        if "λ" in transitions[src]:
+            existing = transitions[src]["λ"]
+            if isinstance(existing, list):
+                if dst not in existing:
+                    existing.append(dst)
+            else:
+                if existing != dst:
+                    transitions[src]["λ"] = [existing, dst]
+        else:
+            transitions[src]["λ"] = [dst]
+
 
     def _create_automaton_empty(self):
         """
@@ -86,7 +110,6 @@ class REParser():
         initial_state = state
         final_states = {state}
         return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
-
 
     def _create_automaton_symbol(self, symbol):
         """
@@ -134,34 +157,19 @@ class REParser():
             s: dict(t) for s, t in automaton.transitions.items()
         }
 
-        # Helper to safely add a λ-transition
-        def add_lambda(src, dst):
-            if src not in transitions:
-                transitions[src] = {}
-            # If a λ transition already exists, turn it into a list of possible λ moves
-            if "λ" in transitions[src]:
-                # Turn it into a list or set if multiple are needed
-                existing = transitions[src]["λ"]
-                if isinstance(existing, list):
-                    existing.append(dst)
-                else:
-                    transitions[src]["λ"] = [existing, dst]
-            else:
-                transitions[src]["λ"] = [dst]
-
         # λ-move from new initial to old initial (to start automaton)
-        add_lambda(new_initial, automaton.initial_state)
+        self.null_transition(transitions, new_initial, automaton.initial_state)
 
         # λ-move from new initial to new final (to accept ε)
-        add_lambda(new_initial, new_final)
+        self.null_transition(transitions, new_initial, new_final)
 
         # λ-move from each old final to old initial (to repeat)
         for f in automaton.final_states:
-            add_lambda(f, automaton.initial_state)
+            self.null_transition(transitions, f, automaton.initial_state)
 
         # λ-move from each old final to new final (to stop)
         for f in automaton.final_states:
-            add_lambda(f, new_final)
+            self.null_transition(transitions, f, new_final)
 
         initial_state = new_initial
         final_states = {new_final}
@@ -170,123 +178,68 @@ class REParser():
 
     def _create_automaton_union(self, automaton1, automaton2):
         """
-        Create an automaton that accepts the union of two automata.
-
-        This is done by creating a new initial state with null transitions
-        connecting to the initial states of the two original automata.
+        Create an automaton that accepts the union of two automata by creating
+        a new start and end state, with λ-transitions.
 
         Args:
-            automaton1: First automaton of the union. Type: FiniteAutomaton.
-            automaton2: Second automaton of the union. Type: FiniteAutomaton.
+            automaton1: First automaton. Type: FiniteAutomaton.
+            automaton2: Second automaton. Type: FiniteAutomaton.
 
         Returns:
             Automaton that accepts the union. Type: FiniteAutomaton
         """
-        # To avoid state conflicts, we offset the states of the second automaton.
-        # We find the highest integer state name in the first automaton to create a safe offset.
-        a1_state_ints = [int(s) for s in automaton1.states if s.isdigit()]
-        offset = max(a1_state_ints) + 1 if a1_state_ints else 0
-
-        def offset_state(s):
-            """Adds the offset to a state name from the second automaton."""
-            return str(int(s) + offset)
-
-        # Apply the offset to automaton2's components
-        a2_states_offset = {offset_state(s) for s in automaton2.states}
-        a2_initial_offset = offset_state(automaton2.initial_state)
-        a2_finals_offset = {offset_state(s) for s in automaton2.final_states}
-        
-        a2_transitions_offset = {}
-        for start_state, transitions in automaton2.transitions.items():
-            new_start_state = offset_state(start_state)
-            a2_transitions_offset[new_start_state] = {}
-            for symbol, dest_states in transitions.items():
-                # Ensure destination is always a list for consistent processing
-                if not isinstance(dest_states, list):
-                    dest_states = [dest_states]
-                a2_transitions_offset[new_start_state][symbol] = [offset_state(d) for d in dest_states]
-
-        # Create a new, unique initial state for the union automaton
-        new_initial = str(offset + max([int(s) for s in a2_states_offset if s.isdigit()]) + 1)
-
-        # Combine the components of both automata
-        states = automaton1.states | a2_states_offset | {new_initial}
+        # Merge states and symbols
+        states = automaton1.states | automaton2.states
         symbols = automaton1.symbols | automaton2.symbols
-        
-        # The final states of the union are the final states of both original automata
-        final_states = automaton1.final_states | a2_finals_offset
-        
-        # Combine transitions from both automata
-        transitions = automaton1.transitions.copy()
-        transitions.update(a2_transitions_offset)
+        transitions = {**automaton1.transitions, **automaton2.transitions}
 
-        # Add null transitions from the new initial state to the original initial states
-        transitions[new_initial] = {
-            'λ': [automaton1.initial_state, a2_initial_offset]
-        }
+        # Create new start and end states
+        new_start = str(self.state_counter)  # or any method your class uses
+        new_end = str(self.state_counter + 1)
+        self.state_counter += 2
+        states.update([new_start, new_end])
 
-        return FiniteAutomaton(initial_state=new_initial, states=states, symbols=symbols, transitions=transitions, final_states=final_states)
+        # Add λ-transitions from new start to original initial states
+        self.null_transition(transitions, new_start, automaton1.initial_state)
+        self.null_transition(transitions, new_start, automaton2.initial_state)
+
+        # Add λ-transitions from original final states to new end state
+        for f in automaton1.final_states:
+            self.null_transition(transitions, f, new_end)
+        for f in automaton2.final_states:
+            self.null_transition(transitions, f, new_end)
+
+        # The new final state is the only final state
+        final_states = {new_end}
+
+        return FiniteAutomaton(new_start, states, symbols, transitions, final_states)
 
     def _create_automaton_concat(self, automaton1, automaton2):
         """
-        Create an automaton that accepts the concatenation of two automata (NFA-compatible).
+        Create an automaton that accepts the concatenation of two automata
+        by connecting the final states of automaton1 to the initial state of automaton2.
 
         Args:
-            automaton1: First automaton of the concatenation. Type: FiniteAutomaton
-            automaton2: Second automaton of the concatenation. Type: FiniteAutomaton
+            automaton1: First automaton. Type: FiniteAutomaton
+            automaton2: Second automaton. Type: FiniteAutomaton
 
         Returns:
             Automaton that accepts the concatenation. Type: FiniteAutomaton
         """
-        # Compute offset for renumbering automaton2 states
-        a1_state_ints = [int(s) for s in automaton1.states]
-        offset = max(a1_state_ints) + 1 if a1_state_ints else 0
-
-        def offset_state(s):
-            return str(int(s) + offset)
-
-        def offset_transitions(trans):
-            new_trans = {}
-            for s, sym_dict in trans.items():
-                new_s = offset_state(s)
-                new_trans[new_s] = {}
-                for sym, dest_list in sym_dict.items():
-                    # Ensure dest_list is always a list
-                    if not isinstance(dest_list, list):
-                        dest_list = [dest_list]
-                    new_trans[new_s][sym] = [offset_state(d) for d in dest_list]
-            return new_trans
-
-        # Copy automaton1 transitions (make sure values are lists)
-        a1_trans = {}
-        for s, sym_dict in automaton1.transitions.items():
-            a1_trans[s] = {}
-            for sym, dest in sym_dict.items():
-                if isinstance(dest, list):
-                    a1_trans[s][sym] = dest[:]
-                else:
-                    a1_trans[s][sym] = [dest]
-
-        # Offset automaton2
-        a2_trans = offset_transitions(automaton2.transitions)
-
         # Merge states, symbols, and transitions
-        states = set(automaton1.states) | {offset_state(s) for s in automaton2.states}
-        symbols = set(automaton1.symbols) | set(automaton2.symbols)
-        transitions = {**a1_trans, **a2_trans}
+        states = automaton1.states | automaton2.states
+        symbols = automaton1.symbols | automaton2.symbols
+        transitions = {**automaton1.transitions, **automaton2.transitions}
 
-        # λ-move from each final of automaton1 to initial of automaton2
-        a2_init = offset_state(automaton2.initial_state)
+        # Connect final states of automaton1 to initial state of automaton2
         for f in automaton1.final_states:
-            if f not in transitions:
-                transitions[f] = {}
-            if "λ" not in transitions[f]:
-                transitions[f]["λ"] = []
-            if a2_init not in transitions[f]["λ"]:
-                transitions[f]["λ"].append(a2_init)
+            self.null_transition(transitions, f, automaton2.initial_state)
 
+        # Final states are the final states of automaton2
+        final_states = automaton2.final_states
+
+        # Initial state is the initial of automaton1
         initial_state = automaton1.initial_state
-        final_states = {offset_state(s) for s in automaton2.final_states}
 
         return FiniteAutomaton(initial_state, states, symbols, transitions, final_states)
 
