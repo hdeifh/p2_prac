@@ -119,11 +119,11 @@ class FiniteAutomaton:
 
                 for symbol in symbols:
                     next_states = set() # This will be the new DFA state
-                    # Calculate the set of NFA states reachable from 'current' on 'symbol'
+                    # Calculate the set of NFA states set from 'current' on 'symbol'
                     for state in current:
                         if state in self.transitions and symbol in self.transitions[state]:
                             for dest in self.transitions[state][symbol]:
-                                # For each NFA state reachable, add its lambda-closure
+                                # For each NFA state set, add its lambda-closure
                                 next_states.update(self._lambda_closure({dest}))
                     
                     next_name = name_state(next_states)
@@ -154,121 +154,90 @@ class FiniteAutomaton:
                 final_states=dfa_final_states
             )
     
+
+
     def to_minimized(self):
         """
-        Turns automaton inta a minimized DFA
+        Minimiza un DFA usando el método clásico de refinamiento de clases de equivalencia.
         """
-        # 1) Normalizar alfabeto excluyendo None/λ
-        symbols = sorted(s for s in self.symbols if s not in (None, 'λ'))
 
-        # 2) Eliminar estados inaccesibles: búsqueda en anchura desde el estado inicial
-        dead = "∅"
-        reachable = set()
-        queue = [self.initial_state]
+        # --- 1️⃣ Eliminar estados inaccesibles (BFS) ---
+        set = set()
+        queue = deque([self.initial_state])
+
         while queue:
-            st = queue.pop(0)
-            if st in reachable:
+            state = queue.popleft()
+            if state in set:
                 continue
-            reachable.add(st)
-            # recorrer todas las transiciones (si faltan símbolos, consideramos que van al dead state)
-            for sym in symbols:
-                dests = self.transitions.get(st, {}).get(sym)
+            set.add(state)
+            for sym, dests in self.transitions.get(state, {}).items():
                 if dests:
                     for d in dests:
-                        if d not in reachable:
+                        if d not in set:
                             queue.append(d)
-                else:
-                    # si no hay destino, consideramos implicita la transición al estado muerto
-                    if dead not in reachable and dead not in queue:
-                        queue.append(dead)
 
-        # Si el estado muerto es alcanzable por falta de transiciones, aseguramos sus auto-bucles
-        if dead in reachable:
-            if dead not in self.transitions:
-                self.transitions[dead] = {}
-            for sym in symbols:
-                self.transitions[dead].setdefault(sym, [dead])
 
-        # Construir el conjunto de estados y transiciones deterministas (un único destino por símbolo)
-        states = set(reachable)
-        dtrans = {}
+        states = set
+        symbols = [s for s in self.symbols if s not in (None, 'λ')]
+        transitions = {}
         for s in states:
-            dtrans[s] = {}
+            transitions[s] = {}
             for sym in symbols:
-                dests = self.transitions.get(s, {}).get(sym)
-                if dests and len(dests) > 0:
-                    dtrans[s][sym] = [dests[0]]
-                else:
-                    # si no hay destino explícito, dirigir al estado muerto
-                    dtrans[s][sym] = [dead]
+                dests = self.transitions.get(s, {}).get(sym, [])
+                transitions[s][sym] = dests[0] if dests else None
 
-        # Filtrar estados finales accesibles
-        finals = set(s for s in self.final_states if s in states)
-
-        # 3) Minimización por refinamiento de particiones
-        # Partición inicial: no final (clase 0) y final (clase 1) si existen
-        nonfinals = states - finals
-        partitions = []
-        if nonfinals:
-            partitions.append(set(nonfinals))
-        if finals:
-            partitions.append(set(finals))
-
-        def build_class_map(parts):
-            cmap = {}
-            for i, part in enumerate(parts):
-                for st in part:
-                    cmap[st] = i
-            return cmap
-
-        cmap = build_class_map(partitions)
+        finals = {s for s in self.final_states if s in states}
+        class_map = {s: (1 if s in finals else 0) for s in states}
 
         changed = True
-        # Iterar hasta que no haya cambios en las particiones
         while changed:
             changed = False
-            new_parts = []
-            for part in partitions:
-                # Agrupar estados de la partición actual por su firma: tupla de clases destino por cada símbolo
-                groups = {}
-                for st in sorted(part):
-                    sig = tuple(cmap[dtrans[st][sym][0]] for sym in symbols)
-                    groups.setdefault(sig, set()).add(st)
-                if len(groups) == 1:
-                    new_parts.append(part)
-                else:
-                    changed = True
-                    for g in groups.values():
-                        new_parts.append(g)
-            partitions = new_parts
-            cmap = build_class_map(partitions)
+            new_classes = {}
+            signatures = {}
+            next_class = 0
 
-        # Construir autómata minimizado: nombrar cada clase como C{idx}
-        class_names = {i: f"C{i}" for i in range(len(partitions))}
+            for state in sorted(states):
+                signature = (class_map[state],) + tuple(
+                    class_map.get(transitions[state][sym], -1) for sym in symbols
+                )
+                if signature not in signatures:
+                    signatures[signature] = next_class
+                    next_class += 1
+
+                new_classes[state] = signatures[signature]
+
+            if new_classes != class_map:
+                class_map = new_classes
+                changed = True
+
+        class_names = {cls: f"C{cls}" for cls in set(class_map.values())}
+
         min_states = set(class_names.values())
-        min_initial = class_names[cmap[self.initial_state]]
-        min_finals = set()
-        for i, part in enumerate(partitions):
-            if part & finals:
-                min_finals.add(class_names[i])
+        min_initial = class_names[class_map[self.initial_state]]
+        min_finals = {class_names[class_map[s]] for s in finals}
 
-        min_trans = {}
-        for i, part in enumerate(partitions):
-            name = class_names[i]
-            rep = next(iter(part))
-            min_trans[name] = {}
+
+        min_transitions = {}
+        for s in states:
+            src = class_names[class_map[s]]
+            if src not in min_transitions:
+                min_transitions[src] = {}
             for sym in symbols:
-                dest = dtrans[rep][sym][0]
-                dest_class = class_names[cmap[dest]]
-                min_trans[name][sym] = [dest_class]
+                dest = transitions[s][sym]
+                if dest is not None:
+                    dest_cls = class_names[class_map[dest]]
+                    min_transitions[src][sym] = [dest_cls]
+
 
         return FiniteAutomaton(
             initial_state=min_initial,
             states=min_states,
             symbols=set(symbols),
-            transitions=min_trans,
+            transitions=min_transitions,
             final_states=min_finals
         )
+
+
         
     def draw(self, path="./images/", filename="automata.png", view=False):
         """
