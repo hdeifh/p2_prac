@@ -5,7 +5,7 @@
 
 from collections import deque
 from graphviz import Digraph
-# from utils import is_deterministic
+from utils import is_deterministic
 
 """
     Podéis implementar cualquier función auxiliar que consideréis necesaria

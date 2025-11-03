@@ -21,7 +21,7 @@ class TestREParser(unittest.TestCase):
         """Test fixed regex."""
         evaluator = self._create_evaluator("H.e.l.l.o")
 
-        # evaluator.draw(filename="test_fixed", view=False)
+        evaluator.draw(filename="test_fixed", view=False)
 
         self._check_accept(evaluator, "Hello", should_accept=True)
         self._check_accept(evaluator, "Helloo", should_accept=False)
@@ -33,7 +33,7 @@ class TestREParser(unittest.TestCase):
         """Test Kleene star."""
         evaluator = self._create_evaluator("a*.b*")
 
-        # evaluator.draw(filename="test_star", view=False)
+        evaluator.draw(filename="test_star", view=False)
 
         self._check_accept(evaluator, "", should_accept=True)
         self._check_accept(evaluator, "a", should_accept=True)
@@ -86,7 +86,7 @@ class TestREParser(unittest.TestCase):
     # --- Test 1: Nested stars and unions ---
     def test_nested_star_or(self):
         evaluator = self._create_evaluator("(a+b*.(c+d)*)*")
-        # evaluator.draw(filename="test_nested", view=False)
+        evaluator.draw(filename="test_nested", view=False)
         valid = ["", "a", "b", "c", "d", "bc", "bd", "bcd", "abcd",
                  "aa", "bb", "bcdc", "ababcd"]
         invalid = ["ef", "aeb", "xyz", "baef"]
@@ -94,7 +94,6 @@ class TestREParser(unittest.TestCase):
             self._check_accept(evaluator, s, True)
         for s in invalid:
             self._check_accept(evaluator, s, False)
-        self._check_accept(evaluator, "acb", False)
 
 if __name__ == "__main__":
     unittest.main()
