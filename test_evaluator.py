@@ -232,5 +232,135 @@ class TestEvaluatorRepeatedWord(TestEvaluatorBase):
         self._check_accept("abcc", should_accept=False)
         self._check_accept("", should_accept=False)
 
+class TestEvaluatorPalindrome01(TestEvaluatorBase):
+    """Test for 3-character binary palindromes (e.g., 000, 010, 101, 111)."""
+
+    def _create_automata(self):
+        description = """
+        Automaton:
+            Symbols: 01
+
+            q0
+            q1
+            q2
+            q3 final
+
+            ini q0 -0-> q1
+            ini q0 -1-> q2
+
+            q1 -0-> q3
+            q2 -1-> q3
+        """
+        return AutomataFormat.read(description)
+
+    def test_palindrome_3bit(self):
+        """Test binary strings of length 3 that are palindromes."""
+        self._check_accept("000", should_accept=True)
+        self._check_accept("010", should_accept=False)
+        self._check_accept("101", should_accept=False)
+        self._check_accept("111", should_accept=True)
+        self._check_accept("001", should_accept=False)
+        self._check_accept("", should_accept=False)
+        self._check_accept("00", should_accept=False)
+
+
+class TestEvaluatorStartsWith1(TestEvaluatorBase):
+    """Test for strings that start with '1' over alphabet {0,1}."""
+
+    def _create_automata(self):
+        description = """
+        Automaton:
+            Symbols: 01
+
+            q0
+            q1 final
+
+            ini q0 -1-> q1
+            q1 -0-> q1
+            q1 -1-> q1
+        """
+        return AutomataFormat.read(description)
+
+    def test_starts_with_1(self):
+        """Test that only strings starting with '1' are accepted."""
+        self._check_accept("1", should_accept=True)
+        self._check_accept("10", should_accept=True)
+        self._check_accept("10101", should_accept=True)
+        self._check_accept("011", should_accept=False)
+        self._check_accept("0", should_accept=False)
+        self._check_accept("", should_accept=False)
+
+
+class TestEvaluatorOnlyAs(TestEvaluatorBase):
+    """Test for strings composed only of 'a's (a*)."""
+
+    def _create_automata(self):
+        description = """
+        Automaton:
+            Symbols: a
+
+            q0 final
+
+            ini q0 -a-> q0
+        """
+        return AutomataFormat.read(description)
+
+    def test_only_as(self):
+        """Test acceptance of strings made only of 'a's."""
+        self._check_accept("", should_accept=True)
+        self._check_accept("a", should_accept=True)
+        self._check_accept("aa", should_accept=True)
+        self._check_accept("aaa", should_accept=True)
+        self._check_accept("aab", should_accept=False)
+        self._check_accept("b", should_accept=False)
+
+
+class TestEvaluatorEmptyStringOnly(TestEvaluatorBase):
+    """Test for automaton that accepts only the empty string."""
+
+    def _create_automata(self):
+        description = """
+        Automaton:
+            Symbols: 01
+
+            q0 final
+
+            ini q0
+        """
+        return AutomataFormat.read(description)
+
+    def test_empty_string_only(self):
+        """Test that only the empty string is accepted."""
+        self._check_accept("", should_accept=True)
+        self._check_accept("0", should_accept=False)
+        self._check_accept("1", should_accept=False)
+        self._check_accept("01", should_accept=False)
+
+
+class TestEvaluatorLambdaChain(TestEvaluatorBase):
+    """Test λ-transitions leading to a final symbol transition."""
+
+    def _create_automata(self):
+        description = """
+        Automaton:
+            Symbols: a
+
+            q0
+            q1
+            q2 final
+
+            ini q0 --> q1
+            q1 --> q2
+            q2 -a-> q2
+        """
+        return AutomataFormat.read(description)
+
+    def test_lambda_chain(self):
+        """Test lambda chain acceptance."""
+        self._check_accept("", should_accept=True)
+        self._check_accept("a", should_accept=True)
+        self._check_accept("aa", should_accept=True)
+        self._check_accept("b", should_accept=False)
+
 if __name__ == '__main__':
     unittest.main()
